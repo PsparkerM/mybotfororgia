@@ -2,7 +2,7 @@ import logging
 from functools import wraps
 from telegram import Update
 from telegram.ext import ContextTypes
-from telegram.error import Forbidden
+from telegram.error import Forbidden, BadRequest
 from config import ADMIN_ID, USERS, SCHEDULE
 from scheduler import scheduler, send_scheduled_message
 
@@ -112,6 +112,8 @@ async def dm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text(f"Отправлено → {name}")
     except Forbidden:
         await update.message.reply_text("Пользователь заблокировал бота")
+    except BadRequest as e:
+        await update.message.reply_text(f"Не удалось отправить: {e}\n\nПользователь должен сначала написать /start боту")
 
 
 @admin_only
