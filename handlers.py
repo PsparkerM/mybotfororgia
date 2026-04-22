@@ -90,6 +90,31 @@ async def sendnow_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 @admin_only
+async def dm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /dm <user_id> <текст> — отправить произвольный текст одному пользователю.
+    Пример: /dm 892217528 Майя, ты молодец!
+    """
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text("Использование: /dm <user_id> <текст>")
+        return
+
+    try:
+        user_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Неверный user_id")
+        return
+
+    text = " ".join(context.args[1:])
+    try:
+        await context.bot.send_message(chat_id=user_id, text=text)
+        name = USERS.get(user_id, {}).get("name", str(user_id))
+        await update.message.reply_text(f"Отправлено → {name}")
+    except Forbidden:
+        await update.message.reply_text("Пользователь заблокировал бота")
+
+
+@admin_only
 async def broadcast_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     /broadcast <текст> — отправить произвольный текст всем пользователям.
