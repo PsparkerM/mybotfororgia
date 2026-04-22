@@ -64,9 +64,9 @@ async def sendnow_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if target == "all":
         for user_id, slots in SCHEDULE.items():
-            for slot in slots:
+            for slot_idx, slot in enumerate(slots):
                 if slot["time"] == time_str:
-                    await send_scheduled_message(bot, user_id, slot["texts"])
+                    await send_scheduled_message(bot, user_id, slot["texts"], slot_idx)
                     sent += 1
     else:
         try:
@@ -76,9 +76,9 @@ async def sendnow_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
 
         slots = SCHEDULE.get(user_id, [])
-        for slot in slots:
+        for slot_idx, slot in enumerate(slots):
             if slot["time"] == time_str:
-                await send_scheduled_message(bot, user_id, slot["texts"])
+                await send_scheduled_message(bot, user_id, slot["texts"], slot_idx)
                 sent += 1
 
     if sent:
@@ -160,15 +160,31 @@ async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     query = update.callback_query
     user_id = query.from_user.id
     name = USERS.get(user_id, {}).get("name", str(user_id))
+    button_text = query.message.reply_markup.inline_keyboard[0][0].text
 
-    await query.answer("🔥 Принято!")
+    await query.answer("🔥")
     await query.edit_message_reply_markup(reply_markup=None)
 
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f"💪 {name} нажал(а) кнопку на сообщении!"
+        text=f"{button_text} — {name} отреагировал(а)!"
     )
-    logger.info(f"Reaction from {name} ({user_id})")
+    logger.info(f"Positive reaction from {name} ({user_id}): {button_text}")
+
+
+async def meh_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    user_id = query.from_user.id
+    name = USERS.get(user_id, {}).get("name", str(user_id))
+
+    await query.answer("😔")
+    await query.edit_message_reply_markup(reply_markup=None)
+
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"💀 {name} нажал(а) «Я УНЫЛОЕ ГАВНО»"
+    )
+    logger.info(f"Meh reaction from {name} ({user_id})")
 
 
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

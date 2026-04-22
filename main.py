@@ -5,7 +5,7 @@ from config import BOT_TOKEN, ADMIN_ID
 from handlers import (
     start_handler, status_handler, sendnow_handler,
     broadcast_handler, dm_handler, menu_handler,
-    reaction_callback, menu_callback,
+    reaction_callback, meh_callback, menu_callback,
 )
 from scheduler import scheduler, setup_jobs
 
@@ -58,7 +58,8 @@ def main() -> None:
     app.add_handler(CommandHandler("menu", menu_handler))
 
     app.add_handler(CallbackQueryHandler(reaction_callback, pattern=r"^ack_"))
-    app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^menu_"))
+    app.add_handler(CallbackQueryHandler(meh_callback,      pattern=r"^meh_"))
+    app.add_handler(CallbackQueryHandler(menu_callback,     pattern=r"^menu_"))
 
     logger.info("Bot is starting (polling mode)...")
     app.run_polling(drop_pending_updates=True)
