@@ -144,6 +144,22 @@ async def broadcast_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 @admin_only
+async def user_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if user.id == ADMIN_ID:
+        return
+
+    name = USERS.get(user.id, {}).get("name", user.full_name)
+    text = update.message.text
+
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"💬 <b>{name}</b> написал(а):\n\n{text}",
+        parse_mode="HTML",
+    )
+
+
+@admin_only
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     /menu — открыть админ-меню с кнопками.

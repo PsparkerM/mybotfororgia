@@ -1,11 +1,12 @@
 import logging
 from telegram import BotCommand, BotCommandScopeChat, BotCommandScopeDefault, MenuButtonCommands
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from config import BOT_TOKEN, ADMIN_ID
 from handlers import (
     start_handler, status_handler, sendnow_handler,
     broadcast_handler, dm_handler, menu_handler,
     reaction_callback, meh_callback, menu_callback,
+    user_message_handler,
 )
 from scheduler import scheduler, setup_jobs
 
@@ -56,6 +57,8 @@ def main() -> None:
     app.add_handler(CommandHandler("dm", dm_handler))
     app.add_handler(CommandHandler("broadcast", broadcast_handler))
     app.add_handler(CommandHandler("menu", menu_handler))
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, user_message_handler))
 
     app.add_handler(CallbackQueryHandler(reaction_callback, pattern=r"^ack_"))
     app.add_handler(CallbackQueryHandler(meh_callback,      pattern=r"^meh_"))
