@@ -145,10 +145,12 @@ def add_monitored_chat(chat_id: int, description: str = "", target_user_id: int 
         payload: dict = {"chat_id": chat_id, "description": description}
         if target_user_id is not None:
             payload["target_user_id"] = target_user_id
+        headers = _headers()
+        headers["Prefer"] = "resolution=merge-duplicates,return=representation"
         r = httpx.post(
             _table_url("monitored_chats"),
             json=payload,
-            headers=_headers(),
+            headers=headers,
             timeout=10,
         )
         r.raise_for_status()
