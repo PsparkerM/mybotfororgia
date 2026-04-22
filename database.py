@@ -124,31 +124,35 @@ def get_all_registered_users() -> list[dict]:
 
 # ── Monitored group chats ──────────────────────────────────────────────────────
 
-def get_monitored_chats() -> list[int]:
+def get_monitored_chats() -> list[dict]:
+    """Returns list of dicts with chat_id and target_user_id (None = respond to everyone)."""
     try:
         r = httpx.get(
             _table_url("monitored_chats"),
-            params={"select": "chat_id"},
+            params={"select": "chat_id,target_user_id,description"},
             headers=_headers(),
             timeout=10,
         )
         r.raise_for_status()
-        return [row["chat_id"] for row in r.json() or []]
+        return r.json() or []
     except Exception as e:
         logger.error(f"get_monitored_chats: {type(e).__name__}: {e}", exc_info=True)
         return []
 
 
-def add_monitored_chat(chat_id: int, description: str = "") -> bool:
+def add_monitored_chat(chat_id: int, description: str = "", target_user_id: int | None = None) -> bool:
     try:
+        payload: dict = {"chat_id": chat_id, "description": description}
+        if target_user_id is not None:
+            payload["target_user_id"] = target_user_id
         r = httpx.post(
             _table_url("monitored_chats"),
-            json={"chat_id": chat_id, "description": description},
+            json=payload,
             headers=_headers(),
             timeout=10,
         )
         r.raise_for_status()
-        logger.info(f"add_monitored_chat({chat_id}): OK")
+        logger.info(f"add_monitored_chat({chat_id}, target={target_user_id}): OK")
         return True
     except Exception as e:
         logger.error(f"add_monitored_chat({chat_id}): {type(e).__name__}: {e}", exc_info=True)

@@ -381,35 +381,52 @@ async def restart_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 @admin_only
 async def addchat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    /addchat <chat_id> [описание] — добавить чат в список мониторинга.
-    Если вызвать прямо из нужной группы без аргументов — добавит текущий чат.
+    /addchat — в группе добавляет текущий чат.
+    Если ответить на чьё-то сообщение — мониторит только этого человека.
+    /addchat <chat_id> — в личке добавить конкретный чат (все пользователи).
     """
     chat = update.effective_chat
+    msg = update.message
+
+    # Detect reply → target specific user
+    target_user_id = None
+    target_name = None
+    if msg.reply_to_message and msg.reply_to_message.from_user:
+        target_user = msg.reply_to_message.from_user
+        target_user_id = target_user.id
+        target_name = target_user.full_name
 
     if context.args:
         try:
             chat_id = int(context.args[0])
         except ValueError:
-            await update.message.reply_text("Неверный chat_id. Пример: /addchat -1001234567890")
+            await msg.reply_text("Неверный chat_id. Пример: /addchat -1001234567890")
             return
-        description = " ".join(context.args[1:]) if len(context.args) > 1 else ""
+        description = chat.title or str(chat_id)
     else:
         chat_id = chat.id
-        description = chat.title or ""
+        description = chat.title or str(chat_id)
 
-    ok = add_monitored_chat(chat_id, description)
+    ok = add_monitored_chat(chat_id, description, target_user_id)
     if ok:
-        await update.message.reply_text(
-            f"✅ Чат добавлен в мониторинг!\n"
-            f"ID: <code>{chat_id}</code>\n"
-            f"Бот будет отвечать на все сообщения в этом чате.",
-            parse_mode="HTML",
-        )
+        if target_user_id:
+            await msg.reply_text(
+                f"✅ Чат добавлен в мониторинг!\n"
+                f"Бот будет отвечать только на сообщения от: <b>{target_name}</b>\n"
+                f"ID пользователя: <code>{target_user_id}</code>",
+                parse_mode="HTML",
+            )
+        else:
+            await msg.reply_text(
+                f"✅ Чат добавлен в мониторинг!\n"
+                f"Бот будет отвечать на все сообщения в этом чате.\n\n"
+                f"💡 Чтобы мониторить только одного человека — ответь на его сообщение командой /addchat",
+                parse_mode="HTML",
+            )
     else:
-        await update.message.reply_text(
-            f"❌ Не удалось добавить чат <code>{chat_id}</code>.\n"
+        await msg.reply_text(
+            f"❌ Не удалось добавить чат.\n"
             f"Проверь что таблица monitored_chats создана в Supabase.",
-            parse_mode="HTML",
         )
 
 
@@ -445,8 +462,9 @@ async def listchats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text("Нет мониторинговых чатов. Добавь через /addchat")
         return
     lines = ["<b>Мониторинговые чаты:</b>\n"]
-    for cid in chats:
-        lines.append(f"• <code>{cid}</code>")
+    for c in chats:
+        target = f"только user <code>{c['target_user_id']}</code>" if c.get("target_user_id") else "все пользователи"
+        lines.append(f"• <b>{c.get('description') or c['chat_id']}</b> → {target}\n  ID: <code>{c['chat_id']}</code>")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
@@ -489,12 +507,19 @@ async def group_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = update.effective_chat.id
     user = update.effective_user
 
-    # Ignore messages from the bot itself
     if user and user.id == context.bot.id:
         return
 
     monitored = get_monitored_chats()
-    if chat_id not in monitored:
+
+    # Find entry for this chat
+    entry = next((c for c in monitored if c["chat_id"] == chat_id), None)
+    if not entry:
+        return
+
+    # If target_user_id is set — only respond to that person
+    target_user_id = entry.get("target_user_id")
+    if target_user_id and (not user or user.id != target_user_id):
         return
 
     reaction = random.choice(GROUP_REACTIONS)
