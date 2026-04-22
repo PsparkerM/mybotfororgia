@@ -37,9 +37,10 @@ def create_user(telegram_id: int, name: str, nick: str, gender: str,
             "style": style,
             "schedule_type": schedule_type,
         }).execute()
+        logger.info(f"create_user({telegram_id}): data={res.data}")
         return res.data[0] if res.data else None
     except Exception as e:
-        logger.error(f"create_user({telegram_id}): {e}")
+        logger.error(f"create_user({telegram_id}) FAILED: {type(e).__name__}: {e}", exc_info=True)
         return None
 
 

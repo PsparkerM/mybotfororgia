@@ -11,7 +11,7 @@ from handlers import (
     GENDER, NAME, STYLE, SCHEDULE_TYPE,
     # Admin commands
     status_handler, sendnow_handler, broadcast_handler, dm_handler,
-    menu_handler, restart_handler,
+    menu_handler, restart_handler, testdb_handler,
     # Callbacks
     reaction_callback, meh_callback, menu_callback,
     # Message forwarding
@@ -80,6 +80,7 @@ def main() -> None:
     app.add_handler(CommandHandler("broadcast", broadcast_handler))
     app.add_handler(CommandHandler("menu",      menu_handler))
     app.add_handler(CommandHandler("restart",   restart_handler))
+    app.add_handler(CommandHandler("testdb",    testdb_handler))
 
     # User message forwarding (must come AFTER ConversationHandler)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, user_message_handler))

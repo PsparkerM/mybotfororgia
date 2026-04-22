@@ -125,11 +125,26 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     user = query.from_user
     schedule_type = query.data.replace("reg_sched_", "")
-    gender = context.user_data["gender"]
-    style = context.user_data["style"]
-    name = context.user_data["name"]
+
+    # Guard: user_data can be lost if bot restarted mid-conversation
+    gender = context.user_data.get("gender")
+    style = context.user_data.get("style")
+    name = context.user_data.get("name")
+
+    if not gender or not style or not name:
+        logger.warning(f"schedule_callback: user_data lost for {user.id}. Starting over.")
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Мужчина 💪", callback_data="reg_gender_male"),
+            InlineKeyboardButton("Девушка 🌸", callback_data="reg_gender_female"),
+        ]])
+        await query.edit_message_text(
+            "Бот перезапускался и данные потерялись. Давай начнём заново — кто ты?",
+            reply_markup=keyboard,
+        )
+        return GENDER
 
     # Save to Supabase
+    logger.info(f"Registering user {user.id}: name={name}, gender={gender}, style={style}, sched={schedule_type}")
     user_data = create_user(
         telegram_id=user.id,
         name=name,
@@ -141,7 +156,15 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     if not user_data:
         await query.edit_message_text(
-            "Что-то пошло не так при регистрации. Попробуй ещё раз через /start"
+            "⚠️ Не удалось сохранить данные. Скорее всего, таблица в базе данных ещё не создана.\n\n"
+            "Попробуй через /start чуть позже — администратор уже в курсе."
+        )
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"⚠️ Ошибка регистрации пользователя!\n"
+                 f"ID: <code>{user.id}</code>, имя: {name}\n"
+                 f"Проверь Railway логи и убедись что таблица registered_users создана в Supabase.",
+            parse_mode="HTML",
         )
         return ConversationHandler.END
 
@@ -294,6 +317,28 @@ async def broadcast_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if blocked:
         result += f"\nЗаблокировали бота: {blocked}"
     await update.message.reply_text(result)
+
+
+@admin_only
+async def testdb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /testdb — проверить соединение с Supabase.
+    """
+    from database import get_db
+    try:
+        res = get_db().table("registered_users").select("telegram_id").limit(1).execute()
+        count = len(get_db().table("registered_users").select("telegram_id").execute().data or [])
+        await update.message.reply_text(
+            f"✅ Supabase подключён.\n"
+            f"Таблица registered_users: OK\n"
+            f"Записей: {count}"
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Ошибка подключения к Supabase:\n<code>{type(e).__name__}: {e}</code>",
+            parse_mode="HTML",
+        )
+        logger.error(f"testdb failed: {e}", exc_info=True)
 
 
 @admin_only
