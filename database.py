@@ -1,46 +1,69 @@
 import os
 import logging
-from supabase import create_client, Client
+import httpx
 
 logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://hxltadimmoelznmgxoig.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4bHRhZGltbW9lbHpubWd4b2lnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjgwMjE2OCwiZXhwIjoyMDkyMzc4MTY4fQ.WEEK-od4_P7PUgtNknTTa_NCq51pV72pw4fsRc7x3wk")
+_DEFAULT_KEY = (
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4bHRhZGltbW9lbHpubWd4b2lnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjgwMjE2OCwiZXhwIjoyMDkyMzc4MTY4fQ"
+    ".WEEK-od4_P7PUgtNknTTa_NCq51pV72pw4fsRc7x3wk"
+)
 
-_client: Client | None = None
+
+def _headers() -> dict:
+    key = os.getenv("SUPABASE_SERVICE_KEY", _DEFAULT_KEY)
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
 
 
-def get_db() -> Client:
-    global _client
-    if _client is None:
-        _client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    return _client
+def _table_url(table: str = "registered_users") -> str:
+    return f"{SUPABASE_URL}/rest/v1/{table}"
 
 
 def get_user(telegram_id: int) -> dict | None:
     try:
-        res = get_db().table("registered_users").select("*").eq("telegram_id", telegram_id).execute()
-        return res.data[0] if res.data else None
+        r = httpx.get(
+            _table_url(),
+            params={"telegram_id": f"eq.{telegram_id}", "select": "*"},
+            headers=_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data[0] if data else None
     except Exception as e:
-        logger.error(f"get_user({telegram_id}): {e}")
+        logger.error(f"get_user({telegram_id}): {type(e).__name__}: {e}", exc_info=True)
         return None
 
 
 def create_user(telegram_id: int, name: str, nick: str, gender: str,
                 style: str, schedule_type: str) -> dict | None:
     try:
-        res = get_db().table("registered_users").insert({
-            "telegram_id": telegram_id,
-            "name": name,
-            "nick": nick,
-            "gender": gender,
-            "style": style,
-            "schedule_type": schedule_type,
-        }).execute()
-        logger.info(f"create_user({telegram_id}): data={res.data}")
-        return res.data[0] if res.data else None
+        r = httpx.post(
+            _table_url(),
+            json={
+                "telegram_id": telegram_id,
+                "name": name,
+                "nick": nick,
+                "gender": gender,
+                "style": style,
+                "schedule_type": schedule_type,
+            },
+            headers=_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        logger.info(f"create_user({telegram_id}): OK, data={data}")
+        return data[0] if data else None
     except Exception as e:
-        logger.error(f"create_user({telegram_id}) FAILED: {type(e).__name__}: {e}", exc_info=True)
+        logger.error(f"create_user({telegram_id}): {type(e).__name__}: {e}", exc_info=True)
         return None
 
 
@@ -54,28 +77,46 @@ def increment_meh(telegram_id: int) -> int:
         update_data: dict = {"meh_count": new_count}
         if new_count >= 9:
             update_data["paused"] = True
-        get_db().table("registered_users").update(update_data).eq("telegram_id", telegram_id).execute()
+        r = httpx.patch(
+            _table_url(),
+            params={"telegram_id": f"eq.{telegram_id}"},
+            json=update_data,
+            headers=_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
         return new_count
     except Exception as e:
-        logger.error(f"increment_meh({telegram_id}): {e}")
+        logger.error(f"increment_meh({telegram_id}): {type(e).__name__}: {e}", exc_info=True)
         return 0
 
 
 def resume_user(telegram_id: int) -> bool:
     try:
-        get_db().table("registered_users").update(
-            {"meh_count": 0, "paused": False}
-        ).eq("telegram_id", telegram_id).execute()
+        r = httpx.patch(
+            _table_url(),
+            params={"telegram_id": f"eq.{telegram_id}"},
+            json={"meh_count": 0, "paused": False},
+            headers=_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
         return True
     except Exception as e:
-        logger.error(f"resume_user({telegram_id}): {e}")
+        logger.error(f"resume_user({telegram_id}): {type(e).__name__}: {e}", exc_info=True)
         return False
 
 
 def get_all_registered_users() -> list[dict]:
     try:
-        res = get_db().table("registered_users").select("*").execute()
-        return res.data or []
+        r = httpx.get(
+            _table_url(),
+            params={"select": "*"},
+            headers=_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json() or []
     except Exception as e:
-        logger.error(f"get_all_registered_users: {e}")
+        logger.error(f"get_all_registered_users: {type(e).__name__}: {e}", exc_info=True)
         return []
