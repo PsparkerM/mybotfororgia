@@ -5,8 +5,11 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import Forbidden, BadRequest
 from config import ADMIN_ID, USERS, SCHEDULE
-from database import get_user, create_user, increment_meh, resume_user, get_all_registered_users
-from messages.public_pools import EXPLOSIVE_REACTIONS, WELCOME
+from database import (
+    get_user, create_user, increment_meh, resume_user, get_all_registered_users,
+    get_monitored_chats, add_monitored_chat, remove_monitored_chat,
+)
+from messages.public_pools import EXPLOSIVE_REACTIONS, WELCOME, GROUP_REACTIONS
 from scheduler import scheduler, send_scheduled_message, schedule_registered_user_jobs
 
 logger = logging.getLogger(__name__)
@@ -324,14 +327,13 @@ async def testdb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """
     /testdb — проверить соединение с Supabase.
     """
-    from database import get_db
     try:
-        res = get_db().table("registered_users").select("telegram_id").limit(1).execute()
-        count = len(get_db().table("registered_users").select("telegram_id").execute().data or [])
+        users = get_all_registered_users()
+        chats = get_monitored_chats()
         await update.message.reply_text(
             f"✅ Supabase подключён.\n"
-            f"Таблица registered_users: OK\n"
-            f"Записей: {count}"
+            f"Пользователей в registered_users: {len(users)}\n"
+            f"Мониторинговых чатов: {len(chats)}"
         )
     except Exception as e:
         await update.message.reply_text(
@@ -377,6 +379,78 @@ async def restart_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 @admin_only
+async def addchat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /addchat <chat_id> [описание] — добавить чат в список мониторинга.
+    Если вызвать прямо из нужной группы без аргументов — добавит текущий чат.
+    """
+    chat = update.effective_chat
+
+    if context.args:
+        try:
+            chat_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("Неверный chat_id. Пример: /addchat -1001234567890")
+            return
+        description = " ".join(context.args[1:]) if len(context.args) > 1 else ""
+    else:
+        chat_id = chat.id
+        description = chat.title or ""
+
+    ok = add_monitored_chat(chat_id, description)
+    if ok:
+        await update.message.reply_text(
+            f"✅ Чат добавлен в мониторинг!\n"
+            f"ID: <code>{chat_id}</code>\n"
+            f"Бот будет отвечать на все сообщения в этом чате.",
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            f"❌ Не удалось добавить чат <code>{chat_id}</code>.\n"
+            f"Проверь что таблица monitored_chats создана в Supabase.",
+            parse_mode="HTML",
+        )
+
+
+@admin_only
+async def removechat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /removechat <chat_id> — убрать чат из мониторинга.
+    Без аргументов — убирает текущий чат.
+    """
+    if context.args:
+        try:
+            chat_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("Неверный chat_id.")
+            return
+    else:
+        chat_id = update.effective_chat.id
+
+    ok = remove_monitored_chat(chat_id)
+    if ok:
+        await update.message.reply_text(f"✅ Чат <code>{chat_id}</code> убран из мониторинга.", parse_mode="HTML")
+    else:
+        await update.message.reply_text(f"❌ Не удалось убрать чат <code>{chat_id}</code>.", parse_mode="HTML")
+
+
+@admin_only
+async def listchats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /listchats — список всех мониторинговых чатов.
+    """
+    chats = get_monitored_chats()
+    if not chats:
+        await update.message.reply_text("Нет мониторинговых чатов. Добавь через /addchat")
+        return
+    lines = ["<b>Мониторинговые чаты:</b>\n"]
+    for cid in chats:
+        lines.append(f"• <code>{cid}</code>")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+@admin_only
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📋 Статус задач", callback_data="menu_status")],
@@ -384,6 +458,50 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         [InlineKeyboardButton("❌ Закрыть", callback_data="menu_close")],
     ])
     await update.message.reply_text("Меню администратора:", reply_markup=keyboard)
+
+
+# ── Group chat handlers ───────────────────────────────────────────────────────
+
+async def bot_added_to_group_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Notifies admin when bot is added to a group, with the chat ID."""
+    for member in update.message.new_chat_members:
+        if member.id == context.bot.id:
+            chat = update.effective_chat
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    f"🤖 Бот добавлен в группу!\n\n"
+                    f"Название: <b>{chat.title}</b>\n"
+                    f"ID чата: <code>{chat.id}</code>\n\n"
+                    f"Чтобы включить мониторинг, напиши:\n"
+                    f"/addchat {chat.id}"
+                ),
+                parse_mode="HTML",
+            )
+            logger.info(f"Bot added to group: {chat.title} ({chat.id})")
+
+
+async def group_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Responds with encouragement to messages in monitored group chats."""
+    if not update.message or not update.message.text:
+        return
+
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+
+    # Ignore messages from the bot itself
+    if user and user.id == context.bot.id:
+        return
+
+    monitored = get_monitored_chats()
+    if chat_id not in monitored:
+        return
+
+    reaction = random.choice(GROUP_REACTIONS)
+    try:
+        await update.message.reply_text(reaction)
+    except Exception as e:
+        logger.error(f"group_message_handler: failed to reply in {chat_id}: {e}")
 
 
 # ── Message forwarding ────────────────────────────────────────────────────────

@@ -120,3 +120,52 @@ def get_all_registered_users() -> list[dict]:
     except Exception as e:
         logger.error(f"get_all_registered_users: {type(e).__name__}: {e}", exc_info=True)
         return []
+
+
+# ── Monitored group chats ──────────────────────────────────────────────────────
+
+def get_monitored_chats() -> list[int]:
+    try:
+        r = httpx.get(
+            _table_url("monitored_chats"),
+            params={"select": "chat_id"},
+            headers=_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        return [row["chat_id"] for row in r.json() or []]
+    except Exception as e:
+        logger.error(f"get_monitored_chats: {type(e).__name__}: {e}", exc_info=True)
+        return []
+
+
+def add_monitored_chat(chat_id: int, description: str = "") -> bool:
+    try:
+        r = httpx.post(
+            _table_url("monitored_chats"),
+            json={"chat_id": chat_id, "description": description},
+            headers=_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        logger.info(f"add_monitored_chat({chat_id}): OK")
+        return True
+    except Exception as e:
+        logger.error(f"add_monitored_chat({chat_id}): {type(e).__name__}: {e}", exc_info=True)
+        return False
+
+
+def remove_monitored_chat(chat_id: int) -> bool:
+    try:
+        r = httpx.delete(
+            _table_url("monitored_chats"),
+            params={"chat_id": f"eq.{chat_id}"},
+            headers=_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        logger.info(f"remove_monitored_chat({chat_id}): OK")
+        return True
+    except Exception as e:
+        logger.error(f"remove_monitored_chat({chat_id}): {type(e).__name__}: {e}", exc_info=True)
+        return False
