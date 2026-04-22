@@ -1,5 +1,6 @@
+import random
 import logging
-from telegram import Bot
+from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import Forbidden, BadRequest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -10,15 +11,26 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler(timezone=TZ)
 
 
-async def send_scheduled_message(bot: Bot, user_id: int, text: str) -> None:
+def _reaction_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("💪 Получил(а)!", callback_data=f"ack_{user_id}")
+    ]])
+
+
+async def send_scheduled_message(bot: Bot, user_id: int, texts: list[str]) -> None:
     user = USERS.get(user_id, {})
     nick = user.get("nick", "")
     name = user.get("name", str(user_id))
 
+    text = random.choice(texts)
     full_text = f"{nick}\n\n{text}" if nick else text
 
     try:
-        await bot.send_message(chat_id=user_id, text=full_text)
+        await bot.send_message(
+            chat_id=user_id,
+            text=full_text,
+            reply_markup=_reaction_keyboard(user_id),
+        )
         logger.info(f"Sent to {name} ({user_id}) ✓")
     except Forbidden:
         logger.warning(f"{name} ({user_id}) BLOCKED — пользователь заблокировал бота")
@@ -34,14 +46,14 @@ def setup_jobs(bot: Bot) -> None:
 
         for slot in slots:
             time_str = slot["time"]
-            text = slot["text"]
+            texts = slot["texts"]
             hour, minute = map(int, time_str.split(":"))
             job_id = f"{user_id}_{time_str.replace(':', '')}"
 
             scheduler.add_job(
                 send_scheduled_message,
                 CronTrigger(hour=hour, minute=minute, timezone=TZ),
-                args=[bot, user_id, text],
+                args=[bot, user_id, texts],
                 id=job_id,
                 replace_existing=True,
                 misfire_grace_time=120,

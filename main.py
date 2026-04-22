@@ -1,7 +1,11 @@
 import logging
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 from config import BOT_TOKEN
-from handlers import start_handler, status_handler, sendnow_handler, broadcast_handler, dm_handler
+from handlers import (
+    start_handler, status_handler, sendnow_handler,
+    broadcast_handler, dm_handler, menu_handler,
+    reaction_callback, menu_callback,
+)
 from scheduler import scheduler, setup_jobs
 
 logging.basicConfig(
@@ -30,6 +34,10 @@ def main() -> None:
     app.add_handler(CommandHandler("sendnow", sendnow_handler))
     app.add_handler(CommandHandler("dm", dm_handler))
     app.add_handler(CommandHandler("broadcast", broadcast_handler))
+    app.add_handler(CommandHandler("menu", menu_handler))
+
+    app.add_handler(CallbackQueryHandler(reaction_callback, pattern=r"^ack_"))
+    app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^menu_"))
 
     logger.info("Bot is starting (polling mode)...")
     app.run_polling(drop_pending_updates=True)
