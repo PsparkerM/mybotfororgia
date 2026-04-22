@@ -5,6 +5,9 @@ BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
 ADMIN_ID: int = int(os.getenv("ADMIN_ID", "6135518022"))
 TZ = pytz.timezone("Europe/Moscow")
 
+SUPABASE_URL: str = os.getenv("SUPABASE_URL", "https://hxltadimmoelznmgxoig.supabase.co")
+SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_KEY", "")
+
 # user_id → {name, nick}
 USERS: dict[int, dict[str, str]] = {
     1199979214: {"name": "Лера",        "nick": "Свобода попугаям"},
