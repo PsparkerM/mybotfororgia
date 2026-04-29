@@ -9,7 +9,7 @@ from database import (
     get_user, create_user, increment_meh, resume_user, get_all_registered_users,
     get_monitored_chats, add_monitored_chat, remove_monitored_chat,
 )
-from messages.public_pools import EXPLOSIVE_REACTIONS, WELCOME, GROUP_REACTIONS
+from messages.public_pools import HEART_REACTIONS, WELCOME, GROUP_REACTIONS
 from scheduler import scheduler, send_scheduled_message, schedule_registered_user_jobs
 
 logger = logging.getLogger(__name__)
@@ -564,68 +564,151 @@ async def reaction_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     button_text = query.message.reply_markup.inline_keyboard[0][0].text
 
-    await query.answer("🔥")
+    await query.answer("❤️")
     await query.edit_message_reply_markup(reply_markup=None)
 
-    # Explosive response to user
-    explosion = random.choice(EXPLOSIVE_REACTIONS)
-    await context.bot.send_message(chat_id=user_id, text=explosion)
+    # Heart + motivation response to user
+    heart_msg = random.choice(HEART_REACTIONS)
+    await context.bot.send_message(chat_id=user_id, text=heart_msg)
 
     # Notify admin
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f"{button_text} — {name} отреагировал(а)! 🔥"
+        text=f"{button_text} — {name} отреагировал(а)! ❤️"
     )
     logger.info(f"Positive reaction from {name} ({user_id}): {button_text}")
 
 
-async def meh_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    user_id = query.from_user.id
+_MEH_BACK_MESSAGES = [
+    "Вот это поворот! Я знал(а) что ты справишься! 🔥❤️",
+    "ВОТ ЭТО ХАРАКТЕР! Ты снова в деле! 💪❤️",
+    "Я же говорил(а)! Ты сильнее чем думаешь! 🔥",
+    "Это и есть настоящая сила — вернуться когда тяжело! ❤️💪",
+    "Вот это поворот сюжета! Горжусь тобой! 🏆❤️",
+]
 
+_MEH_CONFIRM_Q1 = "Подожди... ты правда сейчас так чувствуешь? 🤔\n\nМожет всё же попробуем ещё раз?"
+_MEH_CONFIRM_Q2 = "Хм... Может сделаем один маленький шаг? Совсем крошечный 🐢"
+_MEH_CONFIRM_Q3 = "Последний шанс — точно уходишь? Я буду скучать... 👀"
+_MEH_FINAL = "Ну и сиди в своей яме... 🪨\n\nЯма тёплая. Я подожду. Когда будешь готов(а) — возвращайся."
+
+
+async def _get_name(user_id: int) -> str:
     config_user = USERS.get(user_id, {})
     name = config_user.get("name") if config_user else None
     if not name:
         db_user = get_user(user_id)
         name = db_user["name"] if db_user else str(user_id)
+    return name
 
-    await query.answer("😔")
+
+async def meh_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Step 0: user pressed meh button — show first confirmation."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer("🫠")
     await query.edit_message_reply_markup(reply_markup=None)
 
-    # Track meh for registered users only
-    if user_id not in USERS:
-        new_count = increment_meh(user_id)
-        remaining = max(0, 9 - new_count)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Нет, я справлюсь! 💪", callback_data=f"mehc1_n_{user_id}"),
+        InlineKeyboardButton("Да, сдаюсь 😞",        callback_data=f"mehc1_y_{user_id}"),
+    ]])
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=_MEH_CONFIRM_Q1,
+        reply_markup=keyboard,
+    )
 
-        if new_count >= 9:
-            # Paused
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=(
-                    "💀 Ты истратил(а) все 9 жизней уныния.\n\n"
-                    "Мотивационные сообщения приостановлены.\n"
-                    "Когда будешь готов(а) вернуться — просто напиши мне, "
-                    "я передам администратору."
-                ),
-            )
-            logger.info(f"User {name} ({user_id}) PAUSED after 9 meh presses")
-        else:
-            # Show remaining lives
-            hearts = "🫀" * remaining + "🖤" * (9 - remaining)
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=f"😔 Понимаю... Бывает.\n\n{hearts}\nЖизней осталось: {remaining}/9",
-            )
-    else:
-        # Hardcoded friend — just notify admin
-        pass
-
-    # Notify admin
+    name = await _get_name(user_id)
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f"💀 {name} нажал(а) «Я УНЫЛОЕ ГАВНО»"
+        text=f"🫠 {name} нажал(а) на унылую кнопку (шаг 1/3)"
     )
-    logger.info(f"Meh reaction from {name} ({user_id})")
+    logger.info(f"Meh step 1 from {name} ({user_id})")
+
+
+async def meh_step1_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Step 1 answer."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
+
+    if f"mehc1_n_{user_id}" == query.data:
+        await query.edit_message_text(random.choice(_MEH_BACK_MESSAGES))
+        return
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Попробую! 🔥",      callback_data=f"mehc2_n_{user_id}"),
+        InlineKeyboardButton("Нет, не могу 😔", callback_data=f"mehc2_y_{user_id}"),
+    ]])
+    await query.edit_message_text(_MEH_CONFIRM_Q2, reply_markup=keyboard)
+
+
+async def meh_step2_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Step 2 answer."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
+
+    if f"mehc2_n_{user_id}" == query.data:
+        await query.edit_message_text(random.choice(_MEH_BACK_MESSAGES))
+        return
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Возвращаюсь! ✊",  callback_data=f"mehc3_n_{user_id}"),
+        InlineKeyboardButton("Да, ухожу 💀",    callback_data=f"mehc3_y_{user_id}"),
+    ]])
+    await query.edit_message_text(_MEH_CONFIRM_Q3, reply_markup=keyboard)
+
+
+async def meh_step3_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Step 3 — final answer. If confirmed: count the meh."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
+
+    name = await _get_name(user_id)
+
+    if f"mehc3_n_{user_id}" == query.data:
+        await query.edit_message_text(
+            "ВОТ ЭТО ХАРАКТЕР! Ты вернулся(ась) на самом краю! 🔥❤️\n"
+            "Горжусь тобой особенно сильно — это было тяжело, но ты справился(ась)!"
+        )
+        return
+
+    # Confirmed meh — increment counter
+    if user_id not in USERS:
+        new_count = increment_meh(user_id)
+        remaining = max(0, 6 - new_count)
+
+        if new_count >= 6:
+            await query.edit_message_text(
+                f"{_MEH_FINAL}\n\n"
+                "💀 Жизни закончились. Мотивация приостановлена.\n"
+                "Когда будешь готов(а) — напиши мне, я передам."
+            )
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"💀 {name} ({user_id}) исчерпал(а) все 6 жизней — ПАУЗА"
+            )
+            logger.info(f"User {name} ({user_id}) PAUSED after 6 meh")
+        else:
+            hearts = "🫀" * remaining + "🖤" * (6 - remaining)
+            await query.edit_message_text(
+                f"{_MEH_FINAL}\n\n{hearts}\nЖизней осталось: {remaining}/6"
+            )
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"💀 {name} подтвердил(а) уныние (3/3). Жизней: {remaining}/6"
+            )
+    else:
+        await query.edit_message_text(_MEH_FINAL)
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"💀 {name} подтвердил(а) уныние (3/3)"
+        )
+
+    logger.info(f"Meh confirmed (3/3) from {name} ({user_id})")
 
 
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -15,6 +15,7 @@ from handlers import (
     addchat_handler, removechat_handler, listchats_handler,
     # Callbacks
     reaction_callback, meh_callback, menu_callback,
+    meh_step1_callback, meh_step2_callback, meh_step3_callback,
     # Message forwarding
     user_message_handler,
     # Group chat
@@ -99,9 +100,12 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, user_message_handler))
 
     # Reaction callbacks
-    app.add_handler(CallbackQueryHandler(reaction_callback, pattern=r"^ack_"))
-    app.add_handler(CallbackQueryHandler(meh_callback,      pattern=r"^meh_"))
-    app.add_handler(CallbackQueryHandler(menu_callback,     pattern=r"^menu_"))
+    app.add_handler(CallbackQueryHandler(reaction_callback,   pattern=r"^ack_"))
+    app.add_handler(CallbackQueryHandler(meh_callback,        pattern=r"^meh_\d"))
+    app.add_handler(CallbackQueryHandler(meh_step1_callback,  pattern=r"^mehc1_"))
+    app.add_handler(CallbackQueryHandler(meh_step2_callback,  pattern=r"^mehc2_"))
+    app.add_handler(CallbackQueryHandler(meh_step3_callback,  pattern=r"^mehc3_"))
+    app.add_handler(CallbackQueryHandler(menu_callback,       pattern=r"^menu_"))
 
     logger.info("Bot is starting (polling mode)...")
     app.run_polling(drop_pending_updates=True)

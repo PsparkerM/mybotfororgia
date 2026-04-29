@@ -1,5 +1,6 @@
 import random
 import logging
+from datetime import date
 from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import Forbidden, BadRequest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,15 +13,55 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler(timezone=TZ)
 
-_POSITIVE = ["❤️", "ПОЛНЫЙ ГАЗ СУКА", "😘"]
+_POSITIVE_BUTTONS = [
+    "❤️", "💪 Я СМОГУ!", "🔥 ПОЛНЫЙ ГАЗ", "🚀 ДАВАЙ ДАВАЙ",
+    "💥 Я СИЛАЧ", "⚡️ ЗАРЯЖЕН", "🏆 Я ЧЕМПИОН", "🌟 Я ЗВЕЗДА",
+    "💎 Я МОЛОДЕЦ", "🎯 В ТОЧКУ", "❤️‍🔥 ГОРЮ", "😎 Я КРАСАВЧИК",
+    "💪 НЕ СДАМСЯ", "🚀 ВЗЛЕТАЮ", "🌋 ВЗРЫВАЮСЬ", "🏅 Я ПОБЕДИЛ",
+    "🎉 УРАААА", "✊ Я ДЕРЖУСЬ", "🦁 Я ЛЕВ", "🐉 Я ДРАКОН",
+    "💫 Я В ПОТОКЕ", "🎸 Я РОКЕР", "🔑 Я ОТКРЫВАЮ ДВЕРИ",
+]
+
+_MEH_BUTTONS = ["Я ГРИНЧ 🫠", "Я КАКАШКА 💩"]
+
+_CAT_CAPTIONS = [
+    "Доброе утро! ☀️ Этот котик верит в тебя!",
+    "Вставай, этот красавец уже ждёт! 🐱☀️",
+    "Утро! Котик прислал тебе свою энергию на весь день 🐱🔥",
+    "С добрым утром! Смотри какой красавец — ты сегодня такой же! 🐱",
+    "Доброе утро! Котик сказал — сегодня будет огонь! 🐱💪",
+    "Доброе утро! 🐱 Этот кот не сдаётся — и ты не сдашься!",
+    "Доброе утро! Мир ждёт тебя, и котик тоже 🐱☀️",
+]
+
+
+def _cycle_pick(items: list, user_id: int, slot_idx: int = 0) -> str:
+    """Pick from list using day+user hash to cycle without repeating."""
+    day = date.today().timetuple().tm_yday
+    idx = (day * 7 + abs(user_id) % 1000 * 13 + slot_idx) % len(items)
+    return items[idx]
 
 
 def _reaction_keyboard(user_id: int, slot_idx: int) -> InlineKeyboardMarkup:
-    positive = _POSITIVE[slot_idx % len(_POSITIVE)]
+    positive = _POSITIVE_BUTTONS[slot_idx % len(_POSITIVE_BUTTONS)]
+    meh = _MEH_BUTTONS[slot_idx % len(_MEH_BUTTONS)]
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton(positive,          callback_data=f"ack_{user_id}"),
-        InlineKeyboardButton("Я УНЫЛОЕ ГАВНО", callback_data=f"meh_{user_id}"),
+        InlineKeyboardButton(positive, callback_data=f"ack_{user_id}"),
+        InlineKeyboardButton(meh,      callback_data=f"meh_{user_id}"),
     ]])
+
+
+async def send_morning_cat(bot: Bot, user_id: int, name: str) -> None:
+    caption = random.choice(_CAT_CAPTIONS)
+    try:
+        await bot.send_photo(
+            chat_id=user_id,
+            photo="https://cataas.com/cat",
+            caption=caption,
+        )
+        logger.info(f"Morning cat sent to {name} ({user_id}) ✓")
+    except Exception as e:
+        logger.warning(f"Morning cat failed for {name} ({user_id}): {e}")
 
 
 async def send_scheduled_message(bot: Bot, user_id: int, texts: list[str], slot_idx: int = 0) -> None:
@@ -29,7 +70,7 @@ async def send_scheduled_message(bot: Bot, user_id: int, texts: list[str], slot_
     nick = user.get("nick", "")
     name = user.get("name", str(user_id))
 
-    text = random.choice(texts)
+    text = _cycle_pick(texts, user_id, slot_idx)
     full_text = f"{nick}\n\n{text}" if nick else text
 
     try:
@@ -63,7 +104,7 @@ async def send_registered_message(bot: Bot, user_data: dict, time_str: str, slot
         logger.warning(f"No pool for ({gender}, {style}, {category})")
         return
 
-    text = random.choice(pool)
+    text = _cycle_pick(pool, telegram_id, slot_idx)
     full_text = f"{nick}\n\n{text}" if nick else text
 
     try:
@@ -109,7 +150,21 @@ def schedule_registered_user_jobs(bot: Bot, user_data: dict) -> int:
 def setup_jobs(bot: Bot) -> None:
     job_count = 0
 
-    # Hardcoded friends from config
+    # Morning cat at 07:00 for all hardcoded friends
+    for user_id, info in USERS.items():
+        name = info.get("name", str(user_id))
+        scheduler.add_job(
+            send_morning_cat,
+            CronTrigger(hour=7, minute=0, timezone=TZ),
+            args=[bot, user_id, name],
+            id=f"cat_{user_id}",
+            replace_existing=True,
+            misfire_grace_time=120,
+            name=f"{name} | 07:00 [котик]",
+        )
+        job_count += 1
+
+    # Hardcoded friends scheduled messages
     for user_id, slots in SCHEDULE.items():
         name = USERS.get(user_id, {}).get("name", str(user_id))
         for slot_idx, slot in enumerate(slots):
