@@ -323,6 +323,92 @@ async def broadcast_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 @admin_only
+async def testall_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /testall — отправить тестовый прогон всех сообщений на ID администратора.
+    """
+    from scheduler import _POSITIVE_BUTTONS, _MEH_BUTTONS, _CAT_CAPTIONS
+    from messages.public_pools import POOLS, HEART_REACTIONS
+    from config import SCHEDULE, USERS
+
+    bot = context.bot
+    target = update.effective_user.id
+
+    await update.message.reply_text("🧪 Начинаю тестовый прогон — держись, сейчас придёт много сообщений!")
+
+    # 1. Morning cat
+    await bot.send_photo(
+        chat_id=target,
+        photo="https://cataas.com/cat",
+        caption=random.choice(_CAT_CAPTIONS),
+    )
+
+    # 2. All positive button variants (as text list)
+    buttons_text = "\n".join(f"{i+1}. {b}" for i, b in enumerate(_POSITIVE_BUTTONS))
+    meh_text = " / ".join(_MEH_BUTTONS)
+    await bot.send_message(
+        chat_id=target,
+        text=f"<b>Варианты кнопок ({len(_POSITIVE_BUTTONS)} позитивных):</b>\n{buttons_text}\n\n<b>Унылые кнопки:</b> {meh_text}",
+        parse_mode="HTML",
+    )
+
+    # 3. One message from each hardcoded user slot (to admin, not to users)
+    await bot.send_message(chat_id=target, text="<b>── Хардкодные пользователи ──</b>", parse_mode="HTML")
+    for user_id, slots in SCHEDULE.items():
+        name = USERS.get(user_id, {}).get("name", str(user_id))
+        nick = USERS.get(user_id, {}).get("nick", "")
+        for slot_idx, slot in enumerate(slots):
+            text = slot["texts"][slot_idx % len(slot["texts"])]
+            full_text = f"{nick}\n\n{text}" if nick else text
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton(_POSITIVE_BUTTONS[slot_idx % len(_POSITIVE_BUTTONS)], callback_data=f"ack_{target}"),
+                InlineKeyboardButton(_MEH_BUTTONS[slot_idx % len(_MEH_BUTTONS)], callback_data=f"meh_{target}"),
+            ]])
+            await bot.send_message(
+                chat_id=target,
+                text=f"[{name} | {slot['time']}]\n\n{full_text}",
+                reply_markup=keyboard,
+            )
+
+    # 4. One message from each registered user pool (gender × style × category)
+    await bot.send_message(chat_id=target, text="<b>── Пулы зарегистрированных пользователей ──</b>", parse_mode="HTML")
+    for (gender, style), categories in POOLS.items():
+        gender_label = "Мужчина" if gender == "male" else "Девушка"
+        style_labels = {"harsh": "Жёстко", "gentle": "Нежно", "mixed": "Всё и сразу"}
+        style_label = style_labels.get(style, style)
+        for category, messages in categories.items():
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("❤️", callback_data=f"ack_{target}"),
+                InlineKeyboardButton("Я ГРИНЧ 🫠", callback_data=f"meh_{target}"),
+            ]])
+            await bot.send_message(
+                chat_id=target,
+                text=f"[{gender_label} / {style_label} / {category}]\n\n{messages[0]}",
+                reply_markup=keyboard,
+            )
+
+    # 5. Heart reaction sample
+    await bot.send_message(chat_id=target, text="<b>── Сэмпл реакции на позитивную кнопку ──</b>", parse_mode="HTML")
+    for msg in HEART_REACTIONS[:5]:
+        await bot.send_message(chat_id=target, text=msg)
+
+    # 6. Meh flow preview (text only)
+    await bot.send_message(
+        chat_id=target,
+        text=(
+            "<b>── Флоу унылой кнопки (3 переспроса) ──</b>\n\n"
+            "Шаг 1: «Подожди... ты правда сейчас так чувствуешь?» [Нет, справлюсь! | Да, сдаюсь]\n"
+            "Шаг 2: «Может сделаем один маленький шаг?» [Попробую! | Нет, не могу]\n"
+            "Шаг 3: «Последний шанс — точно уходишь?» [Возвращаюсь! | Да, ухожу]\n"
+            "Финал: «Ну и сиди в своей яме... 🪨» — жизнь списывается (6 жизней)"
+        ),
+        parse_mode="HTML",
+    )
+
+    await bot.send_message(chat_id=target, text="✅ Тестовый прогон завершён!")
+
+
+@admin_only
 async def testdb_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     /testdb — проверить соединение с Supabase.

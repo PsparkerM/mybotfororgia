@@ -12,7 +12,7 @@ from handlers import (
     # Admin commands
     status_handler, sendnow_handler, broadcast_handler, dm_handler,
     menu_handler, restart_handler, testdb_handler,
-    addchat_handler, removechat_handler, listchats_handler,
+    addchat_handler, removechat_handler, listchats_handler, testall_handler,
     # Callbacks
     reaction_callback, meh_callback, menu_callback,
     meh_step1_callback, meh_step2_callback, meh_step3_callback,
@@ -88,6 +88,7 @@ def main() -> None:
     app.add_handler(CommandHandler("menu",       menu_handler))
     app.add_handler(CommandHandler("restart",    restart_handler))
     app.add_handler(CommandHandler("testdb",     testdb_handler))
+    app.add_handler(CommandHandler("testall",    testall_handler))
     app.add_handler(CommandHandler("addchat",    addchat_handler))
     app.add_handler(CommandHandler("removechat", removechat_handler))
     app.add_handler(CommandHandler("listchats",  listchats_handler))
