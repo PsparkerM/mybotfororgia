@@ -65,7 +65,7 @@ SCHEDULE = {
 
 ## Environment Variables
 ```bash
-BOT_TOKEN=8257083630:AAEpcdfFKVqw33_1BM3U0eowsE__FkSROEw
+BOT_TOKEN=<твой токен из BotFather — хранить только в Railway Variables>
 ADMIN_ID=6135518022
 TZ=Europe/Moscow
 ```
